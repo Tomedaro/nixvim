@@ -1,38 +1,18 @@
 # modules/hardtime/default.nix
-{ lib, pkgs, config, ... }: # config refers to the full programs.nixvim config being built
+{ lib, pkgs, config, ... }:
 
 let
+  # This refers to the 'enable' option defined in the 'options' block below
+  cfg = config.programs.nixvim.plugins.hardtime;
   pluginPkg = pkgs.vimPlugins.hardtime-nvim;
-
-  # You can still define user-configurable options for hardtime's Lua setup.
-  # These options would be set in your main configuration like:
-  # programs.nixvim.custom.hardtime.disabledFiletypes = [ ... ];
-  # Let's assume you define these options elsewhere or decide to hardcode for now
-  # for simplicity to match the "direct contribution" style.
-  # For a more configurable approach, you'd define 'options.programs.nixvim.custom.hardtime = { ... };'
-  # and then reference 'config.programs.nixvim.custom.hardtime' here.
-
-  # For this example, let's make the Lua `enabled` state and `disabledFiletypes` directly configurable
-  # via some agreed-upon paths in the main `programs.nixvim` config.
-  # This is a common pattern: the module contributes to `programs.nixvim` AND
-  # reads from other parts of `programs.nixvim` (or a dedicated section like `programs.nixvim.custom.hardtime`).
-
-  # To make it truly configurable like treesitter.enable, we'd define options.
-  # Let's use the options pattern from before, as it's more robust, and then this module
-  # just returns the `config` block based on those options.
-  # The key is that this module *itself* contributes the `options` and the `config`.
-
-  hardtimeOpts = config.programs.nixvim.plugins.hardtime; # Referring to options defined below
 in
 {
-  # 1. Define the Nix options for configuring hardtime.nvim
-  # These will be available under `programs.nixvim.plugins.hardtime.*` in your main config.
+  # 1. Define the Nix options for configuring this hardtime module
   options.programs.nixvim.plugins.hardtime = {
-    enable = lib.mkEnableOption "hardtime.nvim - Vim motion training plugin"; # Controls if this module's config is applied
-
-    luaEnabled = lib.mkOption { # Controls the 'enabled' key in Lua setup
+    enable = lib.mkEnableOption "hardtime.nvim - Vim motion training plugin";
+    luaEnabled = lib.mkOption {
       type = lib.types.bool;
-      default = true;
+      default = true; # Default to functionally enabled if Nix module is enabled
       description = "Whether hardtime.nvim functionality is enabled in its Lua setup.";
     };
     disabledFiletypes = lib.mkOption {
@@ -40,41 +20,51 @@ in
       default = [ "NvimTree" "neo-tree" "dashboard" "packer" "lazy" "TelescopePrompt" "mason" "Overseer" ];
       description = "Filetypes where hardtime.nvim should be disabled.";
     };
-    # Add other hardtime.nvim Lua options you want to control via Nix here
-    # Example:
-    # scoreDecay = lib.mkOption { type = lib.types.nullOr lib.types.float; default = null; };
+    # You can add other options here to pass to the Lua setup if needed
   };
 
-  # 2. Conditionally apply the configuration for hardtime.nvim
-  # This whole 'config' block gets merged into the final `programs.nixvim` if hardtimeOpts.enable is true.
-  config = lib.mkIf hardtimeOpts.enable {
-    extraPlugins = [ pluginPkg ];
+  # 2. Conditionally apply the configuration
+  config = lib.mkIf cfg.enable {
+    programs.nixvim.extraPlugins = [ pluginPkg ];
 
-    extraConfigLua = ''
+    programs.nixvim.extraConfigLua = ''
+      -- Configure hardtime.nvim
       require('hardtime').setup({
-        enabled = ${lib.generators.toLua hardtimeOpts.luaEnabled},
-        disabled_filetypes = ${lib.generators.toLua hardtimeOpts.disabledFiletypes},
-        -- Example for an option that might be null (not set by user)
-        -- ${lib.optionalString (hardtimeOpts.scoreDecay != null) "score_decay = ${toString hardtimeOpts.scoreDecay},"}
+        enabled = ${lib.generators.toLua cfg.luaEnabled},
+        disabled_filetypes = ${lib.generators.toLua cfg.disabledFiletypes},
+        -- Add any other hardtime.nvim specific Lua configurations here
       })
+
+      -- Define user commands directly in Lua
+      vim.api.nvim_create_user_command('HardtimeToggle', function()
+        require('hardtime').toggle()
+      end, { desc = 'Toggle HardTime' })
+
+      vim.api.nvim_create_user_command('HardtimeEnable', function()
+        require('hardtime').enable()
+      end, { desc = 'Enable HardTime' })
+
+      vim.api.nvim_create_user_command('HardtimeDisable', function()
+        require('hardtime').disable()
+      end, { desc = 'Disable HardTime' })
+
+      vim.api.nvim_create_user_command('HardtimeReport', function()
+        require('hardtime').report()
+      end, { desc = 'HardTime Report' })
     '';
 
-    commands = {
-      HardtimeToggle = { command = "lua require('hardtime').toggle()"; description = "Toggle HardTime"; };
-      HardtimeEnable = { command = "lua require('hardtime').enable()"; description = "Enable HardTime"; };
-      HardtimeDisable = { command = "lua require('hardtime').disable()"; description = "Disable HardTime"; };
-      HardtimeReport = { command = "lua require('hardtime').report()"; description = "HardTime Report"; };
-    };
-
-    keymaps = [{
-      mode = "n";
-      key = "<leader>ht"; # Example: <Leader>ht
-      action = "<cmd>HardtimeToggle<cr>";
-      options = {
-        noremap = true;
-        silent = true;
-        desc = "Toggle HardTime";
-      };
-    }];
+    programs.nixvim.keymaps = [
+      {
+        mode = "n";
+        key = "<leader>ht"; # Example: <Leader>ht
+        action = "<cmd>HardtimeToggle<cr>"; # This command is now defined via Lua
+        options = {
+          noremap = true;
+          silent = true;
+          desc = "Toggle HardTime";
+        };
+      }
+      # Add other keymaps if needed
+    ];
   };
 }
